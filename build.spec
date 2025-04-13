@@ -3,7 +3,7 @@
 block_cipher = None
 
 a = Analysis(
-    ['main.py'],
+    ['CompressionApp.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -34,5 +34,5 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,  # 不显示控制台窗口
-    icon='icon.ico' # 可选图标文件
+    icon='icon.png' # 可选图标文件
 )

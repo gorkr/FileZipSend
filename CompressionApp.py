@@ -37,7 +37,10 @@ class CompressionApp:
             'smtp_port': 25,  # SMTP端口
             'sender_email': 'gorkrr@126.com',  # 发件邮箱
             'sender_password': 'NLcQ3hhdTTEe3Bhf',  # 邮箱密码/授权码
+            'receive_email': "gorkrr@126.com", # 默认接受邮箱
+            'compress_password': "zxy123" # 默认压缩密码
         }
+
 
         self._create_widgets()
         self._layout()
@@ -85,9 +88,9 @@ class CompressionApp:
                 )
 
     def _set_defaults(self):
-        """设置默认值"""
-        self.entry_email.insert(0, "gorkrr@126.com")
-        self.entry_password.insert(0, "zxy123")
+        """设置界面默认值"""
+        self.entry_email.insert(0, self.config['receive_email'])
+        self.entry_password.insert(0, self.config['compress_password'])
 
     def _browse_file(self):
         """选择文件"""
