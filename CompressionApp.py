@@ -1,21 +1,22 @@
 """
-文件分卷压缩邮件工具
-作者：gorkrr@126.com
-版本：1.0
-功能：
-1. 调用7-Zip分卷压缩并加密文件（2MB/卷）
-2. 通过SMTP协议发送分卷到指定邮箱
-3. 支持打包为独立EXE
+文件分卷压缩邮件工具（优化版）
+作者：AI助手
+版本：1.1
+更新内容：
+1. 压缩包名自动匹配源文件名
+2. 邮件主题显示原始文件名和分卷编号
+3. 发送后自动清理分卷文件
+4. 预填充默认邮箱和密码
 """
 
 import os
 import glob
 import tkinter as tk
-from email.mime.text import MIMEText
 from tkinter import ttk, filedialog, messagebox
 import subprocess
 import smtplib
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
@@ -24,12 +25,12 @@ class CompressionApp:
     """主应用程序类"""
 
     def __init__(self, root):
-        """初始化GUI界面"""
+        """初始化界面和配置"""
         self.root = root
-        self.root.title("文件分卷邮寄工具 v1.0")
-        self.root.resizable(False, False) # 什么意思
+        self.root.title("文件分卷邮寄工具 v1.1")
+        self.root.resizable(False, False)
 
-        # 配置默认参数
+        # 配置参数
         self.config = {
             '7z_path': 'C:\\Program Files\\7-Zip\\7z.exe',  # 7-Zip安装路径
             'smtp_server': 'smtp.126.com',  # SMTP服务器
@@ -40,6 +41,7 @@ class CompressionApp:
 
         self._create_widgets()
         self._layout()
+        self._set_defaults()
 
     def _create_widgets(self):
         """创建界面组件"""
@@ -65,160 +67,153 @@ class CompressionApp:
 
     def _layout(self):
         """布局管理"""
-        # 第一行：文件选择
-        self.lbl_file.grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        self.entry_file.grid(row=0, column=1, padx=5, pady=5)
-        self.btn_browse.grid(row=0, column=2, padx=5, pady=5)
+        components = [
+            (self.lbl_file, 0, 0), (self.entry_file, 0, 1), (self.btn_browse, 0, 2),
+            (self.lbl_email, 1, 0), (self.entry_email, 1, 1, 2),
+            (self.lbl_password, 2, 0), (self.entry_password, 2, 1, 2),
+            (self.btn_start, 3, 1),
+            (self.progress, 4, 0, 3), (self.lbl_status, 5, 0, 3)
+        ]
 
-        # 第二行：收件邮箱
-        self.lbl_email.grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
-        self.entry_email.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky=tk.EW)
+        for comp in components:
+            if len(comp) == 3:
+                comp[0].grid(row=comp[1], column=comp[2], padx=5, pady=5, sticky=tk.W)
+            else:
+                comp[0].grid(
+                    row=comp[1], column=comp[2],
+                    columnspan=comp[3], padx=5, pady=5, sticky=tk.EW
+                )
 
-        # 第三行：压缩密码
-        self.lbl_password.grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
-        self.entry_password.grid(row=2, column=1, columnspan=2, padx=5, pady=5, sticky=tk.EW)
-
-        # 第四行：操作按钮
-        self.btn_start.grid(row=3, column=1, padx=5, pady=10)
-
-        # 第五行：进度条和状态
-        self.progress.grid(row=4, column=0, columnspan=3, padx=5, pady=5, sticky=tk.EW)
-        self.lbl_status.grid(row=5, column=0, columnspan=3, padx=5, pady=5)
+    def _set_defaults(self):
+        """设置默认值"""
+        self.entry_email.insert(0, "gorkrr@126.com")
+        self.entry_password.insert(0, "zxy123")
 
     def _browse_file(self):
-        """打开文件选择对话框"""
-        file_path = filedialog.askopenfilename()
-        if file_path:
+        """选择文件"""
+        if file_path := filedialog.askopenfilename():
             self.entry_file.delete(0, tk.END)
             self.entry_file.insert(0, file_path)
 
     def _start_process(self):
-        """主处理流程"""
+        """处理流程控制器"""
         # 获取输入参数
-        file_path = self.entry_file.get()
-        password = self.entry_password.get()
-        target_email = self.entry_email.get()
+        params = {
+            'file_path': self.entry_file.get(),
+            'password': self.entry_password.get(),
+            'target_email': self.entry_email.get()
+        }
 
         # 输入验证
-        if not all([file_path, password, target_email]):
-            messagebox.showerror("错误", "请填写所有必填字段！")
-            return
-
-        if not os.path.exists(file_path):
-            messagebox.showerror("错误", "文件不存在！")
+        if error := self._validate_input(params):
+            messagebox.showerror("输入错误", error)
             return
 
         try:
-            # 执行分卷压缩
+            # 阶段1：压缩文件
             self._update_status("正在压缩文件...", 20)
-            archive_name = self._compress_file(file_path, password)
+            archive_name, original_name = self._compress_file(**params)
 
-            # 发送分卷文件
-            self._update_status("正在发送邮件...", 50)
+            # 阶段2：发送邮件
+            self._update_status("正在准备发送...", 40)
             parts = glob.glob(f"{archive_name}.*")
-            total = len(parts)
 
+            # 阶段3：逐个发送
+            total_parts = len(parts)
             for idx, part in enumerate(parts, 1):
-                self._send_email(part, target_email, password)
-                progress = 50 + int((idx / total) * 50)
-                self._update_status(f"发送中 ({idx}/{total})", progress)
+                self._send_email(part, params['target_email'], params['password'],
+                                 original_name, idx, total_parts)
+                progress = 40 + int((idx / total_parts) * 60)
+                self._update_status(f"发送中 ({idx}/{total_parts})", progress)
 
-            messagebox.showinfo("完成", "所有分卷已发送成功！")
-            self._reset_ui()
+            # 阶段4：清理文件
+            self._cleanup_files(archive_name)
+            messagebox.showinfo("完成", "所有分卷已发送并清理完成！")
 
         except Exception as e:
-            messagebox.showerror("错误", f"处理失败: {str(e)}")
+            messagebox.showerror("处理错误", str(e))
+        finally:
             self._reset_ui()
 
-    def _compress_file(self, file_path, password):
-        """
-        调用7-Zip进行分卷压缩
-        :param file_path: 要压缩的文件路径
-        :param password: 压缩密码
-        :return: 生成的压缩包前缀
-        """
-        archive_name = "output.7z"
+    def _validate_input(self, params):
+        """输入验证"""
+        if not all(params.values()):
+            return "所有字段必须填写！"
+        if not os.path.exists(params['file_path']):
+            return "文件不存在！"
+        return ""
+
+    def _compress_file(self, file_path, password, target_email):
+        """执行7-Zip压缩"""
+        original_name = os.path.basename(file_path)
+        base_name = os.path.splitext(original_name)[0]
+        archive_name = f"{base_name}.7z"
 
         try:
             subprocess.run(
                 [
                     self.config['7z_path'],
-                    'a',  # 添加文件
-                    '-v2m',  # 分卷大小2MB
-                    f'-p{password}',  # 设置密码
-                    '-mx=9',  # 最大压缩率
-                    archive_name,  # 输出文件名
-                    file_path  # 要压缩的文件
+                    'a', '-v2m', f'-p{password}', '-mx9',
+                    archive_name, file_path
                 ],
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            return archive_name
+            return archive_name, original_name
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"7-Zip压缩失败: {str(e)}")
+            raise RuntimeError(f"压缩失败: {e.stderr or '未知错误'}")
 
-    def _send_email(self, attachment, target_email, password):
-        """
-        通过SMTP发送邮件
-        :param attachment: 附件路径
-        :param target_email: 收件邮箱
-        :param password: 压缩密码
-        """
+    def _send_email(self, part_path, target_email, password,
+                    original_name, part_num, total_parts):
+        """发送单个分卷邮件"""
         msg = MIMEMultipart()
         msg['From'] = self.config['sender_email']
         msg['To'] = target_email
-        msg['Subject'] = f"分卷文件: {os.path.basename(attachment)}"
+        msg['Subject'] = f"{original_name} - 分卷({part_num}/{total_parts})"
 
-        # 构建邮件正文
+        # 构建正文
         body = f"""
-        请查收分卷压缩文件
-
-        文件信息：
-        - 分卷名称：{os.path.basename(attachment)}
-        - 解压密码：{password}
-        - 需要所有分卷文件才能解压
-
-        本邮件由自动分卷工具发送
+        文件名：{original_name}
+        分卷信息：{part_num}/{total_parts}
+        解压密码：{password}
         """
-        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
         # 添加附件
-        with open(attachment, 'rb') as f:
+        with open(part_path, 'rb') as f:
             part = MIMEBase('application', 'octet-stream')
             part.set_payload(f.read())
             encoders.encode_base64(part)
-            part.add_header(
-                'Content-Disposition',
-                f'attachment; filename="{os.path.basename(attachment)}"'
-            )
+            part.add_header('Content-Disposition',
+                            f'attachment; filename="{os.path.basename(part_path)}"')
             msg.attach(part)
 
-        # 发送邮件
+        # SMTP发送
         try:
-            with smtplib.SMTP(
-                    self.config['smtp_server'],
-                    self.config['smtp_port']
-            ) as server:
+            with smtplib.SMTP(self.config['smtp_server'], self.config['smtp_port']) as server:
                 server.starttls()
-                server.login(
-                    self.config['sender_email'],
-                    self.config['sender_password']
-                )
+                server.login(self.config['sender_email'], self.config['sender_password'])
                 server.send_message(msg)
         except Exception as e:
             raise RuntimeError(f"邮件发送失败: {str(e)}")
+
+    def _cleanup_files(self, archive_base):
+        """清理分卷文件"""
+        for f in glob.glob(f"{archive_base}.*"):
+            os.remove(f)
 
     def _update_status(self, text, value=None):
         """更新界面状态"""
         self.lbl_status.config(text=text)
         if value is not None:
             self.progress['value'] = value
-        self.root.update_idletasks()
+        self.root.update()
 
     def _reset_ui(self):
         """重置界面状态"""
-        self._update_status("就绪", 0)
+        self.progress['value'] = 0
+        self.lbl_status.config(text="就绪")
 
 
 if __name__ == "__main__":
