@@ -32,10 +32,10 @@ class CompressionApp:
         # 配置默认参数
         self.config = {
             '7z_path': 'C:\\Program Files\\7-Zip\\7z.exe',  # 7-Zip安装路径
-            'smtp_server': 'smtp.example.com',  # SMTP服务器
-            'smtp_port': 587,  # SMTP端口
-            'sender_email': 'your-email@example.com',  # 发件邮箱
-            'sender_password': 'your-password'  # 邮箱密码/授权码
+            'smtp_server': 'smtp.126.com',  # SMTP服务器
+            'smtp_port': 25,  # SMTP端口
+            'sender_email': 'gorkrr@126.com',  # 发件邮箱
+            'sender_password': 'NLcQ3hhdTTEe3Bhf',  # 邮箱密码/授权码
         }
 
         self._create_widgets()
